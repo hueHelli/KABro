@@ -1,0 +1,2400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GLB Viewer with PLC Variable Mapping</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        /* =========================================
+         * MAIN SIDEBAR STYLES
+         * ========================================= */
+        /* Main Sidebar: Model Selection and Node Structure */
+        #sidebar {
+            width: 300px;
+            min-width: 200px;
+            max-width: 70%;
+            background: #f0f0f0;
+            padding: 10px;
+            overflow-y: auto;
+            box-sizing: border-box;
+            position: relative;
+            flex-shrink: 0;
+            z-index: 10; 
+        }
+
+        #sidebar-resizer {
+            width: 5px;
+            background: #ccc;
+            cursor: ew-resize;
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 11;
+        }
+
+        #modelSelection {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+
+        h3 {
+            margin-top: 10px;
+            margin-bottom: 5px;
+            font-size: 1em;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 4px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #e0e0e0;
+        }
+
+        tr.highlighted {
+            background-color: #ffff00; 
+        }
+
+        tr.setup-highlighted {
+            background-color: #add8e6 !important; 
+        }
+
+        .triangle {
+            cursor: pointer;
+            user-select: none;
+            display: inline-block;
+            width: 16px;
+            text-align: center;
+        }
+
+        .triangle::before {
+            content: "▶";
+            display: inline-block;
+            transform-origin: center;
+            transition: transform 0.2s;
+        }
+
+        .expanded > td .triangle::before {
+            transform: rotate(90deg);
+        }
+
+        .hidden-row {
+            display: none;
+        }
+
+        /* =========================================
+         * SETUP SIDEBAR STYLES
+         * ========================================= */
+        /* Setup Sidebar: PLC Variable Mapping */
+        #setupSidebar {
+            width: 300px;
+            min-width: 200px;
+            max-width: 70%;
+            background: #f9f9f9;
+            padding: 10px;
+            overflow-y: auto;
+            box-sizing: border-box;
+            position: fixed; 
+            top: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 15; /* Increased z-index to appear above main sidebar */
+            display: none;
+            flex-shrink: 0;
+            border-left: 1px solid #ccc;
+        }
+
+        #setupSidebar-resizer {
+            width: 5px;
+            background: #ccc;
+            cursor: ew-resize;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 16; /* Higher than setupSidebar */
+        }
+
+        #setupSidebar h2 {
+            margin-top: 0;
+        }
+
+        .mapping-item {
+            border: 1px solid #ccc;
+            padding: 5px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .mapping-item:hover {
+            background-color: #e8e8e8;
+        }
+
+        .mapping-item label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .mapping-item input, .mapping-item select {
+            width: calc(100% - 10px);
+            margin-bottom: 5px;
+            padding: 4px;
+            box-sizing: border-box;
+        }
+
+        .mapping-item button {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        .sensor-variable {
+            border: 1px solid #ccc;
+            padding: 5px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .sensor-variable:hover {
+            background-color: #f5f5f5;
+        }
+
+        .sensor-variable label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .sensor-variable input,
+        .sensor-variable select,
+        .sensor-variable button {
+            width: 100%;
+            margin-bottom: 5px;
+            padding: 4px;
+            box-sizing: border-box;
+        }
+
+        .sensor-variable button {
+            padding: 4px 8px;
+            margin-top: 5px;
+        }
+
+        .mapping-item .add-variable-btn {
+            width: 100%;
+            padding: 6px;
+            margin-top: 5px;
+            background-color: #d0e6ff;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .mapping-item .add-variable-btn:hover {
+            background-color: #a0c4ff;
+        }
+
+        /* =========================================
+         * MAIN CONTENT STYLES
+         * ========================================= */
+        /* Main Content: 3D Renderer and Controls */
+        #main-content {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background-color: #FFFFFF;
+        }
+
+        /* Annotation Box */
+        #annotation {
+            position: absolute; 
+            top: 10px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            background-color: #ffff00;
+            padding: 10px;
+            display: none;
+            font-size: 1em;
+            border-radius: 3px;
+            z-index: 20; 
+            pointer-events: none;
+        }
+
+        /* Control Buttons */
+        #resetButton {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 8px 12px;
+            background-color: #f0f0f0;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            border-radius: 4px;
+            z-index: 25; 
+            margin-right: 5px;
+        }
+
+        #setupModeButton {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background-color: #f0f0f0;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            border-radius: 4px;
+            z-index: 25;
+        }
+
+        #resetButton:hover, #setupModeButton:hover {
+            background-color: #e0e0e0;
+        }
+
+        #addMappingButton {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            cursor: not-allowed;
+            font-size: 1em;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            background-color: #d0d0d0; 
+            color: #000000;
+        }
+
+        #addMappingButton.enabled {
+            cursor: pointer;
+            background-color: #add8e6;
+            color: #000000;
+        }
+
+        /* =========================================
+         * TOOLTIP AND MODAL STYLES
+         * ========================================= */
+        /* Tooltip for Hover Information */
+        .tooltip {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 5px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+            pointer-events: none;
+            display: none;
+            z-index: 30; 
+            font-size: 0.9em;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .modal-content canvas {
+            width: 100% !important;
+            height: auto !important;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            cursor: pointer;
+            font-size: 1.2em;
+        }
+
+        /* =========================================
+         * BLUE DOT MARKER STYLES
+         * ========================================= */
+        /* Blue dot marker for mapped parts (15px) */
+        .mapped-part-dot {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: blue;
+            border-radius: 50%;
+            z-index: 5; 
+            cursor: pointer;
+        }
+
+        /* =========================================
+         * FLYOUT STYLES
+         * ========================================= */
+        /* Container that holds all flyouts and SVG lines */
+        #flyoutsContainer {
+            position: fixed; /* Changed from absolute to fixed */
+            top: 0; 
+            left: 0; 
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: visible;
+            z-index: 17; /* Increased z-index to appear above blue dots */
+        }
+
+        /* Flyout Panels */
+        .node-flyout-panel {
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            pointer-events: auto;
+            z-index: 18; /* Higher than flyoutsContainer */
+        }
+
+        /* Flyout SVG Lines */
+        #flyoutsSVG {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 18; /* Above blue dots */
+        }
+
+        .flyout-line {
+            stroke: blue;
+            stroke-width: 2;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- =========================================
+     * MAIN SIDEBAR: MODEL SELECTION AND NODE STRUCTURE
+     * ========================================= -->
+    <div id="sidebar">
+        <div id="sidebar-resizer"></div>
+        <select id="modelSelection">
+            <option value="">Select a model</option>
+        </select>
+        <h3>Model Parts</h3>
+        <table id="nodeStructure">
+            <thead>
+                <tr>
+                    <th>Part Number</th>
+                    <th>Name</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- =========================================
+     * SETUP SIDEBAR: PLC VARIABLE MAPPING
+     * ========================================= -->
+    <div id="setupSidebar">
+        <div id="setupSidebar-resizer"></div>
+        <button id="exitSetupButton" style="display: none;">Exit Setup</button>
+        <h2>PLC Variable Mapping</h2>
+        <button id="addMappingButton" disabled>Add Mapping for Selected Part</button>
+        <div id="mappingList"></div>
+        <button id="saveSetupButton">Save Setup as JSON</button>
+        <button id="importSetupButton">Import Setup from JSON</button>
+    </div>
+
+    <!-- =========================================
+     * MAIN CONTENT: 3D RENDERER AND CONTROLS
+     * ========================================= -->
+    <div id="main-content">
+        <div id="annotation">Node Info</div>
+        <button id="resetButton">Reset View</button>
+        <button id="setupModeButton">Enter Setup Mode</button>
+    </div>
+
+    <!-- =========================================
+     * TOOLTIP AND BLUE DOTS CONTAINERS
+     * ========================================= -->
+    <div class="tooltip" id="tooltip"></div>
+
+    <!-- Container for the blue "mapped" dots -->
+    <div id="dotsContainer" 
+         style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:auto;">
+    </div>
+
+    <!-- Container that will hold all dynamic flyouts and SVG lines -->
+    <div id="flyoutsContainer">
+        <svg id="flyoutsSVG"></svg>
+    </div>
+
+    <!-- =========================================
+     * EXTERNAL LIBRARIES
+     * ========================================= -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <!-- =========================================
+     * MAIN JAVASCRIPT
+     * ========================================= -->
+    <script>
+        /* =========================================
+         * GLOBAL VARIABLES
+         * ========================================= */
+        let scene, camera, renderer, controls;
+        let model, nodes = {};
+        let cameraSize;
+        let highlightedNode = null;
+        let isSetupMode = false;
+        let sensorMapping = {};
+        let tempMappingData = {};
+        let selectedSetupNode = null;
+        let initialCameraParams = {};
+        let lastSelectionSource = null; // 'model' | 'structure' | 'mapping'
+
+        const normalHighlightColor = 0xffff00; 
+        const setupHighlightColor = 0xadd8e6;
+
+        // Flyouts tracked by unique node identifiers
+        let flyouts = {};
+
+        const dotsContainer = document.getElementById('dotsContainer');
+        const flyoutsContainer = document.getElementById('flyoutsContainer');
+        const flyoutsSVG = document.getElementById('flyoutsSVG');
+
+        /* =========================================
+         * INITIALIZATION FUNCTIONS
+         * ========================================= */
+        window.onload = function() {
+            initScene();
+            initUI();
+            loadModelList();
+            loadSensorMapping('sensorMapping.json'); 
+            animate();
+        };
+
+        /**
+         * Initializes the Three.js scene, renderer, and lighting.
+         */
+        function initScene() {
+            scene = new THREE.Scene();
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth - document.getElementById('sidebar').offsetWidth, window.innerHeight);
+            renderer.setClearColor(0xFFFFFF);
+            document.getElementById('main-content').appendChild(renderer.domElement);
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+        }
+
+        /**
+         * Initializes UI elements and their event listeners.
+         */
+        function initUI() {
+            // Model selection change event
+            document.getElementById('modelSelection').addEventListener('change', () => {
+                loadModel();
+                setTimeout(updateRendererSize, 50);
+            });
+
+            // Reset view button
+            document.getElementById('resetButton').addEventListener('click', () => {
+                clearHighlights(true);
+                resetNodeStructure();
+                if (controls) controls.reset();
+            });
+
+            // Annotation box click event to deselect
+            const annotationBox = document.getElementById('annotation');
+            annotationBox.addEventListener('click', () => {
+                if (highlightedNode) {
+                    highlightedNode = null;
+                    clearHighlights(false);
+                }
+            });
+
+            // Setup mode toggle buttons
+            document.getElementById('setupModeButton').addEventListener('click', toggleSetupMode);
+            document.getElementById('exitSetupButton').addEventListener('click', toggleSetupMode);
+
+            // Save and import setup buttons
+            document.getElementById('saveSetupButton').addEventListener('click', saveSensorMapping);
+            document.getElementById('importSetupButton').addEventListener('click', importSensorMapping);
+
+            // Adds mapping button in setup mode
+            const addMappingButton = document.getElementById('addMappingButton');
+            addMappingButton.addEventListener('click', () => {
+                if (selectedSetupNode) {
+                    addOrSelectExistingMappingForSelectedNode();
+                }
+            });
+
+            // Initializes sidebar resizers
+            initSidebarResizer();
+            initSetupSidebarResizer();
+
+            // Touch and click for model selection
+            let touchStartX = 0;
+            let touchStartY = 0;
+            renderer.domElement.addEventListener('touchstart', (event) => {
+                if (event.touches.length === 1) {
+                    touchStartX = event.touches[0].clientX;
+                    touchStartY = event.touches[0].clientY;
+                }
+            }, false);
+
+            renderer.domElement.addEventListener('touchend', (event) => {
+                if (event.changedTouches.length === 1) {
+                    const touch = event.changedTouches[0];
+                    const dx = touch.clientX - touchStartX;
+                    const dy = touch.clientY - touchStartY;
+                    if (Math.sqrt(dx*dx + dy*dy) < 10) {
+                        simulateClick(touch.clientX, touch.clientY, 'model');
+                    }
+                }
+            }, false);
+
+            // Click event on the renderer to select nodes
+            renderer.domElement.addEventListener('click', (event) => {
+                simulateClick(event.clientX, event.clientY, 'model');
+            }, false);
+
+            // Enables pointer events for blue dots
+            dotsContainer.style.pointerEvents = 'auto'; 
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        /* =========================================
+         * MODEL LOADING FUNCTIONS
+         * ========================================= */
+        /**
+         * Loads available models into the selection dropdown.
+         */
+        function loadModelList() {
+            // Adjust the fetch path accordingly below!
+            fetch('/web')
+                .then(response => response.json())
+                .then(models => {
+                    const modelSelection = document.getElementById('modelSelection');
+                    models.forEach(file => {
+                        if (file.endsWith('.glb')) {
+                            const option = document.createElement("option");
+                            option.value = `web/${file}`;
+                            option.text = file;
+                            modelSelection.appendChild(option);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading model list:', error);
+                });
+        }
+
+        /**
+         * Loads the selected GLB model into the Three.js scene.
+         */
+        function loadModel() {
+            const modelPath = document.getElementById('modelSelection').value;
+            if (!modelPath) return;
+
+            // Removes existing model if present
+            if (model) {
+                scene.remove(model);
+                disposeNode(model);
+                model = null;
+            }
+
+            const loader = new THREE.GLTFLoader();
+            loader.load(modelPath, (gltf) => {
+                model = gltf.scene;
+                removeZSL(model);
+
+                scene.add(model);
+
+                // Clones original materials for later restoration
+                model.traverse(node => {
+                    if (node.isMesh) {
+                        node.originalMaterial = node.material.clone();
+                    }
+                });
+
+                // Re-orients the model
+                model.rotation.x = -Math.PI / 2;
+
+                /**
+                 * Sets up the camera to fit the loaded model within the view,
+                 * configures orbit controls, and initializes related components.
+                 */
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const aspect = (window.innerWidth - document.getElementById('sidebar').offsetWidth) / window.innerHeight;
+                cameraSize = maxDim * 1.5;
+
+                if (camera) {
+                    controls.dispose();
+                    scene.remove(camera);
+                }
+
+                camera = new THREE.OrthographicCamera(
+                    -cameraSize * aspect / 2, cameraSize * aspect / 2,
+                    cameraSize / 2, -cameraSize / 2, -maxDim * 10, maxDim * 10
+                );
+                const cameraOffset = new THREE.Vector3(1, 1, 1).normalize().multiplyScalar(maxDim * 2);
+                camera.position.copy(center.clone().add(cameraOffset));
+                camera.lookAt(center);
+                scene.add(camera);
+
+                initialCameraParams = {
+                    position: camera.position.clone(),
+                    target: center.clone()
+                };
+
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.target.copy(center);
+                controls.enableZoom = true;
+                controls.enableRotate = true;
+                controls.enablePan = true;
+                controls.update();
+                controls.saveState();
+
+                buildNodeStructure(model, document.getElementById('nodeStructure').querySelector('tbody'));
+                renderer.render(scene, camera);
+
+                setupHoverTooltips();
+                highlightMappedParts();
+                updateMappedPartsDots();
+                updateAllFlyouts(); 
+                updateRendererSize();
+            }, undefined, (error) => {
+                console.error('An error happened while loading the model:', error);
+            });
+        }
+
+        /**
+         * Removes nodes starting with 'ZSL' (spare parts) in the attribute "NAME_EN_US" from the loaded model as we do not want to show them.
+         * @param {THREE.Object3D} rootNode - The root node of the model.
+         */
+        function removeZSL(rootNode) {
+            const toRemove = [];
+            rootNode.traverse(node => {
+                const inventorData = node.userData?.properties?.Inventor;
+                if (inventorData) {
+                    const nameEnUs = inventorData["NAME_EN_US"]?.value || "";
+                    if (nameEnUs.startsWith('ZSL')) {
+                        toRemove.push(node);
+                    }
+                }
+            });
+            toRemove.forEach(n => { if (n.parent) n.parent.remove(n); });
+        }
+
+        /**
+         * Disposes of a node and its children to free memory.
+         * @param {THREE.Object3D} node - The node to dispose.
+         */
+        function disposeNode(node) {
+            if (node.geometry) node.geometry.dispose();
+            if (node.material) {
+                if (Array.isArray(node.material)) {
+                    node.material.forEach(material => material.dispose());
+                } else {
+                    node.material.dispose();
+                }
+            }
+            if (node.children) {
+                node.children.forEach(child => disposeNode(child));
+            }
+        }
+
+        /* =========================================
+         * NODE STRUCTURE MANAGEMENT
+         * ========================================= */
+        let initialExpansionState = new Map();
+
+        /**
+         * Builds the node structure table from the loaded model.
+         * @param {THREE.Object3D} object - The loaded model.
+         * @param {HTMLElement} container - The table body element.
+         */
+        function buildNodeStructure(object, container) {
+            container.innerHTML = '';
+            nodes = {};
+            initialExpansionState.clear();
+            object.children.forEach(child => traverseNode(child, container, 0, null, true));
+        }
+
+        /**
+         * Determines by prefix in the attribute "Part Number" if a node should be included in the node structure table. We do not want to load WC documents or norm parts.
+         * @param {THREE.Object3D} node - The node to check.
+         * @returns {boolean} - True if the node should be included, false otherwise.
+         */
+        function shouldIncludeNode(node) {
+            if (node.name && node.name.startsWith('_')) return false;
+            const inventorData = node.userData?.properties?.Inventor;
+            if (!inventorData) return false;
+            const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+            if (partNumberFull === 'N/A') return false;
+            if (partNumberFull.startsWith('WT') || partNumberFull.startsWith('UNN') ||
+                partNumberFull.startsWith('UXN') || partNumberFull.startsWith('UXA') ||
+                partNumberFull.startsWith('UXB') || partNumberFull.startsWith('UNE') || 
+                partNumberFull.startsWith('UXS') || partNumberFull.startsWith('UNS') ||
+                partNumberFull.startsWith('UXE')){
+                return false;
+            }
+            return true;
+        }
+
+        /**
+         * Traverses the model nodes and populates the node structure table.
+         * @param {THREE.Object3D} node - The current node being traversed.
+         * @param {HTMLElement} container - The table body element.
+         * @param {number} level - The current depth level in the hierarchy.
+         * @param {HTMLElement|null} parentRow - The parent table row element.
+         * @param {boolean} parentExpanded - Whether the parent row is expanded.
+         */
+        function traverseNode(node, container, level = 0, parentRow = null, parentExpanded = true) {
+            if (!shouldIncludeNode(node)) {
+                node.children.forEach(child => traverseNode(child, container, level, parentRow, parentExpanded));
+                return;
+            }
+
+            const inventorData = node.userData?.properties?.Inventor;
+            const partNumberFull = inventorData?.["Part Number"]?.value || `Node ${node.id}`;
+            const uniqueId = `${partNumberFull}_${node.id}`;
+
+            // Initialize the array if partNumberFull is not yet in nodes
+            if (!nodes[partNumberFull]) {
+                nodes[partNumberFull] = [];
+            }
+            nodes[partNumberFull].push(node);
+
+            const row = document.createElement('tr');
+            row.dataset.partNumber = partNumberFull;
+            row.dataset.nodeId = node.id;
+            row.dataset.uniqueId = uniqueId;
+            row.dataset.level = level;
+
+            if (parentRow) {
+                const parentUniqueId = parentRow.dataset.uniqueId;
+                row.dataset.parentUniqueId = parentUniqueId;
+
+                // Append this row's uniqueId to the parent's childUniqueIds
+                if (!parentRow.dataset.childUniqueIds) {
+                    parentRow.dataset.childUniqueIds = '';
+                }
+                parentRow.dataset.childUniqueIds += `${uniqueId},`;
+            }
+
+            const initiallyExpanded = (level === 0);
+            initialExpansionState.set(uniqueId, initiallyExpanded);
+
+            const isVisible = parentExpanded;
+            if (!isVisible) {
+                row.classList.add('hidden-row');
+            }
+
+            if (initiallyExpanded) {
+                row.classList.add('expanded');
+            } else {
+                row.classList.add('collapsed');
+            }
+
+            // Part Number Cell with expand/collapse triangle
+            const partNumberCell = document.createElement('td');
+            partNumberCell.style.paddingLeft = `${level * 20}px`;
+
+            const triangle = document.createElement('span');
+            triangle.classList.add('triangle');
+            // Determine if the node has visible children
+            const hasVisibleChildren = node.children.some(child => shouldIncludeNode(child));
+            if (!hasVisibleChildren) {
+                triangle.style.visibility = 'hidden';
+            }
+            triangle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleRowExpansion(row);
+            });
+            partNumberCell.appendChild(triangle);
+
+            const partNumberText = document.createElement('span');
+            partNumberText.textContent = partNumberFull;
+            partNumberCell.appendChild(partNumberText);
+            row.appendChild(partNumberCell);
+
+            // Name Cell
+            const nameCell = document.createElement('td');
+            const nameEnUs = inventorData?.["NAME_EN_US"]?.value || "";
+            const ptcName = inventorData?.["PTC_WM_NAME"]?.value || "";
+            const nodeName = node.name || `Node ${node.id}`;
+            const name = nameEnUs || ptcName || nodeName;
+            nameCell.textContent = name;
+            row.appendChild(nameCell);
+
+            // Tooltip with description
+            const descriptionEnUs = inventorData?.["DESCRIPTION_EN_US"]?.value;
+            const articleNo = inventorData?.["ARTICLENO"]?.value;
+            const description = inventorData?.["Description"]?.value;
+            const descriptionTooltip = descriptionEnUs || articleNo || description || nodeName;
+            row.title = descriptionTooltip;
+
+            // Click event to select the node
+            row.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (uniqueId === getUniqueId(highlightedNode)) {
+                    // Deselects if the same node is clicked again
+                    if (lastSelectionSource === 'structure' || lastSelectionSource === 'mapping') {
+                        clearHighlights(true);
+                        if (controls) controls.reset();
+                    } else {
+                        clearHighlights(false);
+                    }
+                    highlightedNode = null;
+                    return;
+                }
+                selectNode(node, 'structure');
+                expandToNodeInStructure(uniqueId);
+            });
+
+            container.appendChild(row);
+
+            // Recursively traverses child nodes
+            node.children.forEach(child => {
+                traverseNode(child, container, level + 1, row, initiallyExpanded && isVisible);
+            });
+        }
+
+        /**
+         * Toggles the expansion state of a table row.
+         * @param {HTMLElement} row - The table row to toggle.
+         */
+        function toggleRowExpansion(row) {
+            const uniqueId = row.dataset.uniqueId;
+            const isExpanded = row.classList.contains('expanded');
+            if (isExpanded) {
+                row.classList.remove('expanded');
+                row.classList.add('collapsed');
+                collapseChildren(uniqueId);
+            } else {
+                row.classList.remove('collapsed');
+                row.classList.add('expanded');
+                expandChildren(uniqueId);
+            }
+        }
+
+        /**
+         * Collapses child rows recursively.
+         * @param {string} uniqueId - The unique identifier of the parent node.
+         */
+        function collapseChildren(uniqueId) {
+            const childUniqueIds = document.querySelector(`tr[data-unique-id='${uniqueId}']`).dataset.childUniqueIds.split(',');
+            childUniqueIds.forEach(childUniqueId => {
+                if (childUniqueId) {
+                    const childRow = getRowByUniqueId(childUniqueId);
+                    if (childRow) {
+                        childRow.classList.add('hidden-row');
+                        if (childRow.classList.contains('expanded')) {
+                            childRow.classList.remove('expanded');
+                            childRow.classList.add('collapsed');
+                            collapseChildren(childUniqueId);
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * Expands child rows recursively.
+         * @param {string} uniqueId - The unique identifier of the parent node.
+         */
+        function expandChildren(uniqueId) {
+            const childUniqueIds = document.querySelector(`tr[data-unique-id='${uniqueId}']`).dataset.childUniqueIds.split(',');
+            childUniqueIds.forEach(childUniqueId => {
+                if (childUniqueId) {
+                    const childRow = getRowByUniqueId(childUniqueId);
+                    if (childRow) {
+                        childRow.classList.remove('hidden-row');
+                        if (childRow.classList.contains('expanded')) {
+                            expandChildren(childUniqueId);
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * Resets the node structure table to its initial expansion state.
+         */
+        function resetNodeStructure() {
+            /**
+             * Recursively resets each node row based on initial expansion state.
+             * @param {string} uniqueId - The unique identifier of the node.
+             * @param {boolean} parentExpanded - Whether the parent row is expanded.
+             */
+            function resetNodeRow(uniqueId, parentExpanded) {
+                const nodeData = findNodeByUniqueId(uniqueId);
+                if (!nodeData) return;
+
+                const row = getRowByUniqueId(uniqueId);
+                if (!row) return;
+
+                const initiallyExpanded = initialExpansionState.get(uniqueId);
+                const isVisible = parentExpanded;
+                if (!isVisible) {
+                    row.classList.add('hidden-row');
+                } else {
+                    row.classList.remove('hidden-row');
+                }
+
+                if (initiallyExpanded) {
+                    row.classList.add('expanded');
+                    row.classList.remove('collapsed');
+                } else {
+                    row.classList.add('collapsed');
+                    row.classList.remove('expanded');
+                }
+
+                const shouldExpandChildren = isVisible && initiallyExpanded;
+                const childUniqueIds = row.dataset.childUniqueIds ? row.dataset.childUniqueIds.split(',') : [];
+                childUniqueIds.forEach(childUniqueId => {
+                    if (childUniqueId) {
+                        resetNodeRow(childUniqueId, shouldExpandChildren);
+                    }
+                });
+            }
+
+            // Reset all top-level rows (those without a parent)
+            Object.keys(nodes).forEach(partNumberFull => {
+                nodes[partNumberFull].forEach(node => {
+                    if (!node.parent || !node.parent.userData?.properties?.Inventor?.["Part Number"]?.value) {
+                        const uniqueId = `${partNumberFull}_${node.id}`;
+                        resetNodeRow(uniqueId, true);
+                    }
+                });
+            });
+        }
+
+        /* =========================================
+         * SELECTION AND HIGHLIGHTING FUNCTIONS
+         * ========================================= */
+        /**
+         * Finds the node in the hierarchy corresponding to a mesh.
+         * @param {THREE.Object3D} mesh - The intersected mesh.
+         * @returns {THREE.Object3D|null} - The corresponding node or null.
+         */
+        function findNodeInHierarchy(mesh) {
+            let node = mesh;
+            while (node) {
+                const partNumberFull = node.userData?.properties?.Inventor?.["Part Number"]?.value || null;
+                const nodeId = node.id;
+                const uniqueId = `${partNumberFull}_${nodeId}`;
+                if (partNumberFull && nodes[partNumberFull]?.some(n => n.id === nodeId)) {
+                    return node;
+                }
+                node = node.parent;
+            }
+            return null;
+        }
+
+        /**
+         * Simulates a click event at given screen coordinates to select nodes.
+         * @param {number} clientX - The X coordinate of the click.
+         * @param {number} clientY - The Y coordinate of the click.
+         * @param {string} source - The source of the click ('model', 'structure', 'mapping').
+         */
+        function simulateClick(clientX, clientY, source='model') {
+            if (!camera || !renderer || !model) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((clientX - rect.left) / rect.width) * 2 - 1,
+                -((clientY - rect.top) / rect.height) * 2 + 1
+            );
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(model.children, true);
+
+            if (intersects.length > 0) {
+                const intersectedNode = intersects[0].object;
+                const node = findNodeInHierarchy(intersectedNode);
+                if (node) {
+                    const partNumberFull = node.userData?.properties?.Inventor?.["Part Number"]?.value || "N/A";
+                    const uniqueId = `${partNumberFull}_${node.id}`;
+                    if (uniqueId === getUniqueId(highlightedNode)) {
+                        // Deselects if the same node is clicked again
+                        if (lastSelectionSource === 'structure' || lastSelectionSource === 'mapping') {
+                            clearHighlights(true);
+                            if (controls) controls.reset();
+                        } else {
+                            clearHighlights(false);
+                        }
+                        highlightedNode = null;
+                        return;
+                    }
+                    selectNode(node, source);
+                    expandToNodeInStructure(uniqueId);
+                }
+            }
+        }
+
+        /**
+         * Selects a node and handles highlighting.
+         * @param {THREE.Object3D} node - The node to select.
+         * @param {string} source - The source of the selection ('model', 'structure', 'mapping').
+         */
+        function selectNode(node, source) {
+            lastSelectionSource = source;
+
+            if (node === highlightedNode) {
+                // Deselects if the same node is clicked again
+                if (lastSelectionSource === 'structure' || lastSelectionSource === 'mapping') {
+                    clearHighlights(true);
+                    if (controls) controls.reset();
+                } else {
+                    clearHighlights(false);
+                }
+                highlightedNode = null;
+                return;
+            }
+
+            clearHighlights(false);
+            highlightedNode = node;
+            showAnnotation(node);
+
+            if (isSetupMode) {
+                selectSetupNode(node);
+                highlightExistingMappingIfAny(node);
+            } else {
+                selectedSetupNode = null;
+            }
+
+            highlightNode(node, isSetupMode);
+            // Ensure uniqueId is passed correctly
+            const uniqueId = `${node.userData?.properties?.Inventor?.["Part Number"]?.value}_${node.id}`;
+            expandToNodeInStructure(uniqueId);
+
+            if (source === 'structure' || source === 'mapping') {
+                zoomInOnNode(node);
+            }
+
+            // Updates flyouts for "clickable" variables
+            updateAllFlyouts();
+        }
+
+        /**
+         * Highlights the corresponding mapping card in the setup sidebar if a mapping exists.
+         * @param {THREE.Object3D} node - The node to check for existing mappings.
+         */
+        function highlightExistingMappingIfAny(node) {
+            const inventorData = node.userData?.properties?.Inventor;
+            const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+            if (sensorMapping[partNumberFull]) {
+                highlightMappingCard(partNumberFull);
+            }
+        }
+
+        /**
+         * Applies highlight to the selected node and updates the annotation box.
+         * @param {THREE.Object3D} node - The node to highlight.
+         * @param {boolean} setupMode - Whether the highlight is in setup mode.
+         */
+        function highlightNode(node, setupMode) {
+            restoreMaterials();
+            const partNumberFull = node.userData?.properties?.Inventor?.["Part Number"]?.value || "N/A";
+            const uniqueId = `${partNumberFull}_${node.id}`;
+            const row = getRowByUniqueId(uniqueId);
+            if (row) {
+                if (setupMode) {
+                    row.classList.add('setup-highlighted');
+                } else {
+                    row.classList.add('highlighted');
+                }
+            }
+
+            const annotationBox = document.getElementById('annotation');
+            annotationBox.style.backgroundColor = setupMode ? "#add8e6" : "#ffff00";
+
+            const highlightColor = setupMode ? setupHighlightColor : normalHighlightColor;
+            const highlightMat = new THREE.MeshPhongMaterial({ color: highlightColor });
+            highlightMat.transparent = false;
+            highlightMat.opacity = 1;
+
+            // Applies highlight material to the node
+            node.traverse(child => {
+                if (child.isMesh) {
+                    child.material = highlightMat;
+                }
+            });
+
+            dimOthers(node);
+        }
+
+        /**
+         * Dims all other parts except the highlighted one.
+         * @param {THREE.Object3D} highlightedNode - The node to keep highlighted.
+         */
+        function dimOthers(highlightedNode) {
+            if (!model) return;
+            model.traverse(child => {
+                if (child.isMesh && child !== highlightedNode && !isDescendantOf(child, highlightedNode)) {
+                    let dimMat = child.originalMaterial.clone();
+                    dimMat.transparent = true;
+                    dimMat.opacity = 0.6;
+                    dimMat.depthWrite = true;
+                    dimMat.depthTest = true;
+                    child.material = dimMat;
+                }
+            });
+        }
+
+        /**
+         * Restores original materials to all nodes, removing any highlights or dimming.
+         */
+        function restoreMaterials() {
+            if (!model) return;
+            model.traverse(child => {
+                if (child.isMesh && child.originalMaterial) {
+                    child.material = child.originalMaterial.clone();
+                    child.material.opacity = 1;
+                    child.material.transparent = false;
+                    child.material.depthWrite = true;
+                    child.material.depthTest = true;
+                }
+            });
+            document.querySelectorAll('.highlighted').forEach(el => el.classList.remove('highlighted'));
+            document.querySelectorAll('.setup-highlighted').forEach(el => el.classList.remove('setup-highlighted'));
+        }
+
+        /**
+         * Checks if a node is a descendant of another node.
+         * @param {THREE.Object3D} node - The node to check.
+         * @param {THREE.Object3D} parentNode - The potential ancestor node.
+         * @returns {boolean} - True if node is a descendant of parentNode, false otherwise.
+         */
+        function isDescendantOf(node, parentNode) {
+            while (node) {
+                if (node === parentNode) return true;
+                node = node.parent;
+            }
+            return false;
+        }
+
+        /**
+         * Clears all highlights and optionally resets the camera.
+         * @param {boolean} resetCamera - Whether to reset the camera view.
+         */
+        function clearHighlights(resetCamera = false) {
+            document.querySelectorAll('.highlighted').forEach(el => el.classList.remove('highlighted'));
+            document.querySelectorAll('.setup-highlighted').forEach(el => el.classList.remove('setup-highlighted'));
+            hideAnnotation();
+            highlightedNode = null;
+            selectedSetupNode = null;
+            updateAddMappingButtonState();
+            restoreMaterials();
+
+            if (resetCamera) {
+                resetCameraView();
+                if (controls) controls.reset();
+            }
+            // Re-updates flyouts if something changed
+            updateAllFlyouts();
+        }
+
+        /**
+         * Displays the annotation box with part details.
+         * @param {THREE.Object3D} node - The node to annotate.
+         */
+        function showAnnotation(node) {
+            const annotationBox = document.getElementById('annotation');
+            annotationBox.style.display = 'block';
+
+            const inventorData = node.userData?.properties?.Inventor;
+            const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+            const nameEnUs = inventorData?.["NAME_EN_US"]?.value || "";
+            const ptcName = inventorData?.["PTC_WM_NAME"]?.value || "";
+            const nodeName = node.name || 'Unnamed Node';
+            const name = nameEnUs || ptcName || nodeName;
+
+            annotationBox.textContent = `${partNumberFull} - ${name}`;
+        }
+
+        /**
+         * Hides the annotation box.
+         */
+        function hideAnnotation() {
+            const annotationBox = document.getElementById('annotation');
+            annotationBox.style.display = 'none';
+        }
+
+        /**
+         * Resets the camera to its initial parameters.
+         */
+        function resetCameraView() {
+            const totalSidebarWidth = getTotalSidebarWidth();
+            const aspect = (window.innerWidth - totalSidebarWidth) / window.innerHeight;
+            if (camera) {
+                camera.left = -cameraSize * aspect / 2;
+                camera.right = cameraSize * aspect / 2;
+                camera.top = cameraSize / 2;
+                camera.bottom = -cameraSize / 2;
+                camera.updateProjectionMatrix();
+            }
+            renderer.setSize(window.innerWidth - totalSidebarWidth, window.innerHeight);
+
+            if (camera && initialCameraParams) {
+                camera.position.copy(initialCameraParams.position);
+                controls.target.copy(initialCameraParams.target);
+                controls.update();
+            }
+        }
+
+        /**
+         * Zooms into the selected node.
+         * @param {THREE.Object3D} node - The node to zoom into.
+         */
+        function zoomInOnNode(node) {
+            const box = new THREE.Box3().setFromObject(node);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+
+            const aspect = (window.innerWidth - getTotalSidebarWidth()) / window.innerHeight;
+            const newCameraSize = maxDim * 1.5;
+
+            camera.left = -newCameraSize * aspect / 2;
+            camera.right = newCameraSize * aspect / 2;
+            camera.top = newCameraSize / 2;
+            camera.bottom = -newCameraSize / 2;
+            camera.updateProjectionMatrix();
+
+            const offset = maxDim * 8;
+            const direction = new THREE.Vector3(1, 1, 1).normalize();
+            camera.position.copy(center.clone().add(direction.multiplyScalar(offset)));
+            controls.target.copy(center);
+            controls.update();
+        }
+
+        /* =========================================
+         * FLYOUT MANAGEMENT FUNCTIONS
+         * ========================================= */
+        /**
+         * Updates or creates flyouts for every mapped part.
+         * - Static flyouts are always visible.
+         * - Clickable flyouts are visible only when the part is highlighted.
+         */
+        function updateAllFlyouts() {
+            // Remove existing flyouts that no longer have mappings
+            for (let uniqueId in flyouts) {
+                const [partNumberFull, nodeId] = uniqueId.split('_');
+                if (!sensorMapping[partNumberFull]) {
+                    removeFlyout(uniqueId);
+                }
+            }
+
+            // Create flyouts for new mappings
+            for (const partNumberFull in sensorMapping) {
+                sensorMapping[partNumberFull].forEach((mapping, index) => {
+                    // Find the corresponding node(s) with this partNumberFull
+                    const matchingNodes = nodes[partNumberFull] || [];
+                    matchingNodes.forEach(node => {
+                        const uniqueId = `${partNumberFull}_${node.id}`;
+                        if (!flyouts[uniqueId]) {
+                            createFlyoutForPart(uniqueId, node);
+                        }
+                    });
+                });
+            }
+
+            // Update flyout content and visibility
+            for (let uniqueId in flyouts) {
+                const flyoutObj = flyouts[uniqueId];
+                updateFlyoutContentAndVisibility(flyoutObj);
+            }
+        }
+
+        /**
+         * Creates a new flyout for a specific node.
+         * @param {string} uniqueId - The unique identifier for the node (partNumberFull_nodeId).
+         * @param {THREE.Object3D} node - The corresponding node.
+         */
+        function createFlyoutForPart(uniqueId, node) {
+            const panel = document.createElement('div');
+            panel.className = 'node-flyout-panel';
+            panel.style.display = 'none'; // Initially hidden
+
+            flyoutsContainer.appendChild(panel);
+
+            // Create an SVG line for this flyout
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.classList.add('flyout-line');
+            line.dataset.uniqueId = uniqueId;
+            flyoutsSVG.appendChild(line);
+
+            flyouts[uniqueId] = {
+                uniqueId: uniqueId,
+                panel: panel,
+                line: line
+            };
+        }
+
+        /**
+         * Removes a flyout from the DOM.
+         * @param {string} uniqueId - The unique identifier for the node.
+         */
+        function removeFlyout(uniqueId) {
+            const flyoutObj = flyouts[uniqueId];
+            if (!flyoutObj) return;
+            if (flyoutObj.panel.parentNode) {
+                flyoutObj.panel.parentNode.removeChild(flyoutObj.panel);
+            }
+            if (flyoutObj.line.parentNode) {
+                flyoutObj.line.parentNode.removeChild(flyoutObj.line);
+            }
+            delete flyouts[uniqueId];
+        }
+
+        /**
+         * Updates the content and visibility of a flyout based on its mapping.
+         * @param {Object} flyoutObj - The flyout object containing uniqueId, panel, and line.
+         */
+        function updateFlyoutContentAndVisibility(flyoutObj) {
+            const { uniqueId, panel, line } = flyoutObj;
+            const [partNumberFull, nodeId] = uniqueId.split('_');
+            const node = findNodeByUniqueId(uniqueId);
+            if (!node) {
+                panel.style.display = 'none';
+                line.setAttribute('x1', 0);
+                line.setAttribute('y1', 0);
+                line.setAttribute('x2', 0);
+                line.setAttribute('y2', 0);
+                return;
+            }
+
+            // Find the corresponding mapping(s)
+            const mappings = sensorMapping[partNumberFull] || [];
+            // Find the mapping that corresponds to this node
+            const mapping = mappings.find((m, index) => {
+                // Ensure the mapping corresponds to the correct node
+                return nodes[partNumberFull][index]?.id == nodeId;
+            });
+
+            if (!mapping) {
+                panel.style.display = 'none';
+                line.setAttribute('x1', 0);
+                line.setAttribute('y1', 0);
+                line.setAttribute('x2', 0);
+                line.setAttribute('y2', 0);
+                return;
+            }
+
+            // Determines if any static or clickable variables exist
+            let hasStatic = false;
+            let hasClickable = false;
+            mapping.sensorVariables.forEach(varData => {
+                if (varData.behavior === 'static') hasStatic = true;
+                if (varData.behavior === 'clickable') hasClickable = true;
+            });
+
+            // Builds flyout content
+            let html = `<strong>Part: ${partNumberFull}</strong><br>`;
+            mapping.sensorVariables.forEach(sensorData => {
+                html += `Sensor: ${sensorData.sensorVariable}, Behavior: ${sensorData.behavior}<br>`;
+            });
+
+            panel.innerHTML = html;
+
+            // Determines visibility based on variable behaviors
+            const nodeUniqueId = getUniqueId(node);
+            const nodeIsHighlighted = (nodeUniqueId === getUniqueId(highlightedNode));
+            const showForStatic = hasStatic;
+            const showForClickable = hasClickable && nodeIsHighlighted;
+
+            if (showForStatic || showForClickable) {
+                panel.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        /**
+         * Updates the positions of all flyouts and their connecting lines.
+         */
+        function updateFlyoutPositions() {
+            for (let uniqueId in flyouts) {
+                const flyoutObj = flyouts[uniqueId];
+                const { uniqueId: uId, panel, line } = flyoutObj;
+                if (panel.style.display === 'none') {
+                    // Hide the line
+                    line.setAttribute('x1', 0);
+                    line.setAttribute('y1', 0);
+                    line.setAttribute('x2', 0);
+                    line.setAttribute('y2', 0);
+                    continue; // Skip hidden flyouts
+                }
+                const node = findNodeByUniqueId(uId);
+                if (!node) continue;
+                const pos = getPartCenterScreenPosition(node);
+                const panelRect = panel.getBoundingClientRect();
+                let panelX = pos.x + 30;
+                let panelY = pos.y - panelRect.height / 2;
+
+                // Ensure the panel stays within the viewport
+                if (panelX + panelRect.width > window.innerWidth) {
+                    panelX = pos.x - panelRect.width - 30;
+                }
+                if (panelY < 0) {
+                    panelY = 0;
+                }
+
+                panel.style.left = panelX + 'px';
+                panel.style.top = panelY + 'px';
+
+                // Calculate the center of the panel
+                const panelCenterX = panelX + panelRect.width / 2;
+                const panelCenterY = panelY + panelRect.height / 2;
+
+                // Update the SVG line's coordinates
+                line.setAttribute('x1', pos.x);
+                line.setAttribute('y1', pos.y);
+                line.setAttribute('x2', panelCenterX);
+                line.setAttribute('y2', panelCenterY);
+            }
+        }
+
+        /**
+         * Retrieves a unique identifier for a node.
+         * @param {THREE.Object3D} node - The node.
+         * @returns {string|null} - The unique identifier or null.
+         */
+        function getUniqueId(node) {
+            if (!node) return null;
+            const partNumberFull = node.userData?.properties?.Inventor?.["Part Number"]?.value || "N/A";
+            return `${partNumberFull}_${node.id}`;
+        }
+
+        /**
+         * Retrieves the unique identifier of a node.
+         * @param {THREE.Object3D} node - The node.
+         * @returns {string|null} - The unique identifier or null.
+         */
+        function getUniqueIdOfNode(node) {
+            if (!node) return null;
+            return getUniqueId(node);
+        }
+
+        /**
+         * Retrieves the unique identifier of the highlighted node.
+         * @param {THREE.Object3D} node - The node.
+         * @returns {string|null} - The unique identifier or null.
+         */
+        function getUniqueIdOfHighlightedNode(node) {
+            if (!node) return null;
+            return getUniqueId(node);
+        }
+
+        /**
+         * Finds a node based on its unique identifier.
+         * @param {string} uniqueId - The unique identifier (partNumberFull_nodeId).
+         * @returns {THREE.Object3D|null} - The corresponding node or null.
+         */
+        function findNodeByUniqueId(uniqueId) {
+            const [partNumberFull, nodeId] = uniqueId.split('_');
+            const node = nodes[partNumberFull]?.find(n => n.id == nodeId);
+            return node || null;
+        }
+
+        /* =========================================
+         * SETUP MODE AND MAPPING FUNCTIONS
+         * ========================================= */
+        /**
+         * Toggles setup mode on and off.
+         */
+        function toggleSetupMode() {
+            isSetupMode = !isSetupMode;
+            const setupSidebar = document.getElementById('setupSidebar');
+            const setupButton = document.getElementById('setupModeButton');
+            const exitButton = document.getElementById('exitSetupButton');
+
+            if (isSetupMode) {
+                setupSidebar.style.display = 'block';
+                setupButton.style.display = 'none';
+                exitButton.style.display = 'block';
+                updateMappingList();
+                updateRendererSize();
+                clearHighlights(true);
+            } else {
+                setupSidebar.style.display = 'none';
+                setupButton.style.display = 'block';
+                exitButton.style.display = 'none';
+                sensorMapping = JSON.parse(JSON.stringify(tempMappingData));
+                highlightMappedParts();
+                updateMappingList();
+                updateMappedPartsDots();
+                updateAllFlyouts();
+                updateRendererSize();
+                clearHighlights(true);
+            }
+        }
+
+        /**
+         * Enables or disables the "Add Mapping" button based on selection.
+         */
+        function updateAddMappingButtonState() {
+            const addMappingButton = document.getElementById('addMappingButton');
+            if (isSetupMode && selectedSetupNode) {
+                addMappingButton.disabled = false;
+                addMappingButton.classList.add('enabled');
+            } else {
+                addMappingButton.disabled = true;
+                addMappingButton.classList.remove('enabled');
+            }
+        }
+
+        /**
+         * Adds a new mapping or selects an existing one for the selected node.
+         */
+        function addOrSelectExistingMappingForSelectedNode() {
+            if (!selectedSetupNode) return;
+            const inventorData = selectedSetupNode.userData?.properties?.Inventor;
+            const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+
+            if (sensorMapping[partNumberFull]) {
+                highlightMappingCard(partNumberFull);
+            } else {
+                const newMapping = {
+                    sensorVariables: []
+                };
+                sensorMapping[partNumberFull] = [newMapping];
+                tempMappingData = JSON.parse(JSON.stringify(sensorMapping));
+                updateMappingList();
+                highlightMappedParts();
+                updateMappedPartsDots();
+                updateAllFlyouts();
+                highlightMappingCard(partNumberFull);
+            }
+
+            selectSetupNode(null);
+        }
+
+        /**
+         * Loads sensor mapping from a JSON file.
+         * @param {string} fileName - The path to the JSON file.
+         */
+        function loadSensorMapping(fileName) {
+            fetch(fileName)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    sensorMapping = data;
+                    tempMappingData = JSON.parse(JSON.stringify(sensorMapping));
+                    highlightMappedParts();
+                    updateMappingList();
+                    updateMappedPartsDots();
+                    updateAllFlyouts();
+                })
+                .catch(error => {
+                    console.warn('No or invalid sensor mapping found:', error);
+                    sensorMapping = {};
+                    tempMappingData = {};
+                    highlightMappedParts();
+                    updateMappingList();
+                    updateMappedPartsDots();
+                    updateAllFlyouts();
+                });
+        }
+
+        /**
+         * Saves the current sensor mapping to a JSON file.
+         */
+        function saveSensorMapping() {
+            const mappingData = JSON.stringify(sensorMapping, null, 2);
+            const blob = new Blob([mappingData], { type: 'application/json' });
+            saveAs(blob, 'sensorMapping.json');
+        }
+
+        /**
+         * Imports sensor mapping from a JSON file.
+         */
+        function importSensorMapping() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = event => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        sensorMapping = data;
+                        tempMappingData = JSON.parse(JSON.stringify(sensorMapping));
+                        updateMappingList();
+                        highlightMappedParts();
+                        updateMappedPartsDots();
+                        updateAllFlyouts();
+                    } catch (err) {
+                        alert('Invalid JSON file.');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        /**
+         * Highlights all parts that have mappings.
+         */
+        function highlightMappedParts() {
+            if (!model) return;
+            model.traverse(node => {
+                const inventorData = node.userData?.properties?.Inventor;
+                if (!inventorData) return;
+                const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+                if (sensorMapping[partNumberFull]) {
+                    if (node.isMesh) {
+                        node.material = node.originalMaterial.clone();
+                        node.material.emissive.setHex(0x00ff00);
+                    }
+                } else {
+                    if (node.isMesh && node.originalMaterial) {
+                        node.material = node.originalMaterial.clone();
+                        node.material.emissive.setHex(0x000000);
+                    }
+                }
+            });
+
+            // Updates the list of mapped parts for blue dots
+            mappedParts = [];
+            model.traverse(node => {
+                const inventorData = node.userData?.properties?.Inventor;
+                if (inventorData) {
+                    const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+                    if (sensorMapping[partNumberFull]) {
+                        mappedParts.push(node);
+                    }
+                }
+            });
+        }
+
+        /**
+         * Updates the mapping list in the setup sidebar.
+         */
+        function updateMappingList() {
+            const mappingList = document.getElementById('mappingList');
+            mappingList.innerHTML = '';
+            for (const partNumberFull in sensorMapping) {
+                sensorMapping[partNumberFull].forEach((mapping, index) => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'mapping-item';
+                    itemDiv.dataset.partNumber = partNumberFull;
+                    itemDiv.dataset.mappingIndex = index;
+
+                    // Click event to select the node when clicking on the mapping item
+                    itemDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        // Find the node corresponding to this mapping
+                        const node = findNodeByPartNumberMapping(partNumberFull, index);
+                        if (node) {
+                            selectNode(node, 'mapping');
+                            expandToNodeInStructure(`${partNumberFull}_${node.id}`);
+                        }
+                    });
+
+                    // Part Number Label
+                    const partLabel = document.createElement('label');
+                    partLabel.textContent = `Part Number: ${partNumberFull}`;
+                    itemDiv.appendChild(partLabel);
+
+                    // Container for sensor variables
+                    const sensorVariablesDiv = document.createElement('div');
+                    mapping.sensorVariables.forEach((sensorVar, idx) => {
+                        const sensorVariableDiv = createSensorVariableDiv(partNumberFull, index, idx, sensorVar);
+                        sensorVariablesDiv.appendChild(sensorVariableDiv);
+                    });
+                    itemDiv.appendChild(sensorVariablesDiv);
+
+                    // Button to add a new PLC variable
+                    const addVariableBtn = document.createElement('button');
+                    addVariableBtn.textContent = 'Add PLC Variable';
+                    addVariableBtn.className = 'add-variable-btn';
+                    addVariableBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const newSensorVar = {
+                            sensorVariable: '',
+                            behavior: 'static',
+                            minReadPerm: 'undefined in demo',
+                            minWritePerm: 'undefined in demo'
+                        };
+                        sensorMapping[partNumberFull][index].sensorVariables.push(newSensorVar);
+                        const sensorVariableDiv = createSensorVariableDiv(partNumberFull, index, mapping.sensorVariables.length - 1, newSensorVar);
+                        sensorVariablesDiv.appendChild(sensorVariableDiv);
+                    });
+                    itemDiv.appendChild(addVariableBtn);
+
+                    // Button to save the current mapping
+                    const saveButton = document.createElement('button');
+                    saveButton.textContent = 'Save Part Mapping';
+                    saveButton.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const sensorVariableDivs = sensorVariablesDiv.querySelectorAll('.sensor-variable');
+                        sensorMapping[partNumberFull][index].sensorVariables = Array.from(sensorVariableDivs).map(div => {
+                            return {
+                                sensorVariable: div.querySelector('.sensor-input').value,
+                                behavior: div.querySelector('.behavior-select').value,
+                                minReadPerm: div.querySelector('.min-read-perm-select').value,
+                                minWritePerm: div.querySelector('.min-write-perm-select').value
+                            };
+                        });
+                        tempMappingData = JSON.parse(JSON.stringify(sensorMapping));
+                        highlightMappedParts();
+                        updateMappedPartsDots();
+                        updateAllFlyouts();
+                        highlightMappingCard(partNumberFull);
+                    });
+                    itemDiv.appendChild(saveButton);
+
+                    // Button to delete the current mapping
+                    const deleteButton = document.createElement('button');
+                    deleteButton.textContent = 'Delete Part Mapping';
+                    deleteButton.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete mapping for part ${partNumberFull}?`)) {
+                            sensorMapping[partNumberFull].splice(index, 1);
+                            if (sensorMapping[partNumberFull].length === 0) {
+                                delete sensorMapping[partNumberFull];
+                            }
+                            updateMappingList();
+                            highlightMappedParts();
+                            updateMappedPartsDots();
+                            updateAllFlyouts();
+                            clearHighlights(true);
+                        }
+                    });
+                    itemDiv.appendChild(deleteButton);
+
+                    mappingList.appendChild(itemDiv);
+                });
+            }
+        }
+
+        /**
+         * Creates a sensor variable div with inputs and dropdowns.
+         * @param {string} partNumberFull - The full part number.
+         * @param {number} mappingIndex - The index of the mapping.
+         * @param {number} variableIndex - The index of the sensor variable.
+         * @param {Object} sensorVar - The sensor variable data.
+         * @returns {HTMLElement} - The sensor variable div element.
+         */
+        function createSensorVariableDiv(partNumberFull, mappingIndex, variableIndex, sensorVar) {
+            const sensorVariableDiv = document.createElement('div');
+            sensorVariableDiv.className = 'sensor-variable';
+
+            // Name Label and Input
+            const nameLabel = document.createElement('label');
+            nameLabel.textContent = 'Name:';
+            sensorVariableDiv.appendChild(nameLabel);
+
+            const sensorInput = document.createElement('input');
+            sensorInput.type = 'text';
+            sensorInput.value = sensorVar.sensorVariable;
+            sensorInput.placeholder = 'PLC Variable';
+            sensorInput.className = 'sensor-input';
+            sensorVariableDiv.appendChild(sensorInput);
+
+            // Behavior Label and Select
+            const behaviorLabel = document.createElement('label');
+            behaviorLabel.textContent = 'Behavior:';
+            sensorVariableDiv.appendChild(behaviorLabel);
+
+            const behaviorSelect = document.createElement('select');
+            behaviorSelect.className = 'behavior-select';
+            const behaviors = ['static', 'clickable'];
+            behaviors.forEach(beh => {
+                const option = document.createElement('option');
+                option.value = beh;
+                option.textContent = beh.charAt(0).toUpperCase() + beh.slice(1);
+                if (sensorVar.behavior === beh) option.selected = true;
+                behaviorSelect.appendChild(option);
+            });
+            sensorVariableDiv.appendChild(behaviorSelect);
+
+            // Minimum Reading Permission Label and Select (currently has no effect on actual permissions)
+            const minReadPermLabel = document.createElement('label');
+            minReadPermLabel.textContent = 'Minimum Reading Permission:';
+            sensorVariableDiv.appendChild(minReadPermLabel);
+
+            const minReadPermSelect = document.createElement('select');
+            minReadPermSelect.className = 'min-read-perm-select';
+            const readPermOptions = ['undefined in demo', 'Read Level 1', 'Read Level 2', 'Read Level 3'];
+            readPermOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                if (sensorVar.minReadPerm === opt) option.selected = true;
+                minReadPermSelect.appendChild(option);
+            });
+            sensorVariableDiv.appendChild(minReadPermSelect);
+
+            // Minimum Writing Permission Label and Select (currently has no effect on actual permissions)
+            const minWritePermLabel = document.createElement('label');
+            minWritePermLabel.textContent = 'Minimum Writing Permission:';
+            sensorVariableDiv.appendChild(minWritePermLabel);
+
+            const minWritePermSelect = document.createElement('select');
+            minWritePermSelect.className = 'min-write-perm-select';
+            const writePermOptions = ['undefined in demo', 'Write Level 1', 'Write Level 2', 'Write Level 3'];
+            writePermOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                if (sensorVar.minWritePerm === opt) option.selected = true;
+                minWritePermSelect.appendChild(option);
+            });
+            sensorVariableDiv.appendChild(minWritePermSelect);
+
+            // Delete PLC Variable Button
+            const deleteVarBtn = document.createElement('button');
+            deleteVarBtn.textContent = 'Delete PLC Variable';
+            deleteVarBtn.style.backgroundColor = '#ffcccc';
+            deleteVarBtn.style.border = 'none';
+            deleteVarBtn.style.borderRadius = '4px';
+            deleteVarBtn.style.cursor = 'pointer';
+            deleteVarBtn.style.marginTop = '5px';
+            deleteVarBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sensorMapping[partNumberFull][mappingIndex].sensorVariables.splice(variableIndex, 1);
+                updateMappingList();
+                updateAllFlyouts();
+            });
+            sensorVariableDiv.appendChild(deleteVarBtn);
+
+            // Prevents clicks on inputs/selects/buttons from toggling highlight
+            [sensorInput, behaviorSelect, minReadPermSelect, minWritePermSelect, deleteVarBtn].forEach(element => {
+                element.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            });
+
+            // Click event to select the node when clicking on the sensor variable div
+            sensorVariableDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const node = findNodeByPartNumberMapping(partNumberFull, mappingIndex);
+                if (node) {
+                    selectNode(node, 'mapping');
+                    expandToNodeInStructure(`${partNumberFull}_${node.id}`);
+                }
+            });
+
+            return sensorVariableDiv;
+        }
+
+        /**
+         * Highlights the corresponding mapping card in the setup sidebar.
+         * @param {string} partNumberFull - The full part number to highlight.
+         */
+        function highlightMappingCard(partNumberFull) {
+            const mappingItems = document.querySelectorAll('.mapping-item');
+            mappingItems.forEach(item => {
+                if (item.dataset.partNumber === partNumberFull) {
+                    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    item.style.borderColor = 'blue';
+                    item.style.borderWidth = '2px';
+                    setTimeout(() => {
+                        item.style.borderColor = '#ccc';
+                        item.style.borderWidth = '1px';
+                    }, 2000);
+                }
+            });
+        }
+
+        /**
+         * Selects a node in setup mode.
+         * @param {THREE.Object3D|null} node - The node to select or null to deselect.
+         */
+        function selectSetupNode(node) {
+            if (selectedSetupNode) {
+                const prevUniqueId = getUniqueIdOfNode(selectedSetupNode);
+                const prevRow = getRowByUniqueId(prevUniqueId);
+                if (prevRow) {
+                    prevRow.classList.remove('setup-highlighted');
+                }
+            }
+
+            selectedSetupNode = node;
+            if (selectedSetupNode) {
+                const uniqueId = getUniqueIdOfNode(selectedSetupNode);
+                const row = getRowByUniqueId(uniqueId);
+                if (row) {
+                    row.classList.add('setup-highlighted');
+                }
+            }
+
+            updateAddMappingButtonState();
+        }
+
+        /* =========================================
+         * BLUE DOTS MANAGEMENT FUNCTIONS 
+         * ========================================= */
+        let mappedParts = [];
+
+        /**
+         * Updates the dots representing mapped parts.
+         */
+        function updateMappedPartsDots() {
+            dotsContainer.innerHTML = '';
+            if (!model || !sensorMapping) return;
+            mappedParts = [];
+
+            model.traverse(node => {
+                const inventorData = node.userData?.properties?.Inventor;
+                if (inventorData) {
+                    const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+                    if (sensorMapping[partNumberFull]) {
+                        mappedParts.push(node);
+                        const dot = document.createElement('div');
+                        dot.className = 'mapped-part-dot';
+                        dot.dataset.uniqueId = getUniqueIdOfNode(node);
+                        dot.style.pointerEvents = 'auto';
+                        dot.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            selectNode(node, 'model');
+                            expandToNodeInStructure(`${partNumberFull}_${node.id}`);
+                        });
+                        dotsContainer.appendChild(dot);
+                    }
+                }
+            });
+        }
+
+        /**
+         * Updates the positions of all blue dots based on camera movement.
+         */
+        function updateMappedPartsDotsPositions() {
+            if (!camera || !renderer || !mappedParts.length) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mappedParts.forEach(node => {
+                const uniqueId = getUniqueIdOfNode(node);
+                const dot = [...dotsContainer.children].find(d => d.dataset.uniqueId === uniqueId);
+                if (dot) {
+                    const pos = getPartCenterScreenPosition(node);
+                    dot.style.left = (pos.x - 7.5) + 'px';
+                    dot.style.top = (pos.y - 7.5) + 'px';
+                }
+            });
+        }
+
+        /* =========================================
+         * TOOLTIP FUNCTIONS
+         * ========================================= */
+        /**
+         * Sets up hover tooltips for model parts and blue dots.
+         */
+        function setupHoverTooltips() {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            const tooltip = document.getElementById('tooltip');
+
+            // Tooltip for model parts
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                if (!model) return;
+
+                const intersects = raycaster.intersectObjects(model.children, true);
+                if (intersects.length > 0) {
+                    let intersectedNode = intersects[0].object;
+                    let node = findNodeInHierarchy(intersectedNode);
+                    if (node && node.visible && shouldIncludeNode(node)) {
+                        const inventorData = node.userData?.properties?.Inventor;
+                        const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+                        const nameEnUs = inventorData?.["NAME_EN_US"]?.value || "";
+                        const ptcName = inventorData?.["PTC_WM_NAME"]?.value || "";
+                        const nodeName = node.name || 'Unnamed Node';
+                        const name = nameEnUs || ptcName || nodeName;
+                        tooltip.innerHTML = `${partNumberFull} - ${name}`;
+
+                        if (sensorMapping[partNumberFull]) {
+                            sensorMapping[partNumberFull].forEach(mapping => {
+                                mapping.sensorVariables.forEach(sensorData => {
+                                    tooltip.innerHTML += `<br>Sensor: ${sensorData.sensorVariable}`;
+                                });
+                            });
+                        }
+
+                        tooltip.style.left = `${event.clientX + 10}px`;
+                        tooltip.style.top = `${event.clientY + 10}px`;
+                        tooltip.style.display = 'block';
+                    } else {
+                        tooltip.style.display = 'none';
+                    }
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            });
+
+            // Tooltip for blue dots
+            dotsContainer.addEventListener('mousemove', (event) => {
+                const dot = event.target.closest('.mapped-part-dot');
+                if (dot) {
+                    const uniqueId = dot.dataset.uniqueId;
+                    const node = findNodeByUniqueId(uniqueId);
+                    if (node) {
+                        const partNumberFull = node.userData?.properties?.Inventor?.["Part Number"]?.value || "N/A";
+                        const name = getPartNameByPartNumber(partNumberFull);
+                        const sensorInfo = getSensorInfoByPartNumber(partNumberFull);
+                        tooltip.innerHTML = `${partNumberFull} - ${name}`;
+                        sensorInfo.forEach(info => {
+                            tooltip.innerHTML += `<br>Sensor: ${info.sensorVariable}`;
+                        });
+                        tooltip.style.left = `${event.clientX + 10}px`;
+                        tooltip.style.top = `${event.clientY + 10}px`;
+                        tooltip.style.display = 'block';
+                    }
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            });
+
+            // Hides tooltip when mouse leaves the renderer or dots container
+            renderer.domElement.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+            dotsContainer.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+        }
+
+        /**
+         * Retrieves sensor information based on part number.
+         * @param {string} partNumberFull - The full part number.
+         * @returns {Array} - Array of sensor variable objects.
+         */
+        function getSensorInfoByPartNumber(partNumberFull) {
+            if (sensorMapping[partNumberFull]) {
+                return sensorMapping[partNumberFull].flatMap(mapping => mapping.sensorVariables);
+            }
+            return [];
+        }
+
+        /* =========================================
+         * FLYOUT FUNCTIONS
+         * ========================================= */
+
+        /**
+         * Retrieves the screen position of a part's center.
+         * @param {THREE.Object3D} node - The node whose center position is calculated.
+         * @returns {Object} - The x and y screen coordinates.
+         */
+        function getPartCenterScreenPosition(node) {
+            const box = new THREE.Box3().setFromObject(node);
+            const center = box.getCenter(new THREE.Vector3());
+
+            center.project(camera);
+            const rect = renderer.domElement.getBoundingClientRect();
+            return {
+                x: (center.x * 0.5 + 0.5) * rect.width + rect.left,
+                y: (-center.y * 0.5 + 0.5) * rect.height + rect.top
+            };
+        }
+
+        /* =========================================
+         * HELPER FUNCTIONS
+         * ========================================= */
+        /**
+         * Finds a node based on its part number and mapping index.
+         * @param {string} partNumberFull - The full part number.
+         * @param {number} index - The index of the mapping.
+         * @returns {THREE.Object3D|null} - The corresponding node or null.
+         */
+        function findNodeByPartNumberMapping(partNumberFull, index) {
+            if (nodes[partNumberFull] && nodes[partNumberFull][index]) {
+                return nodes[partNumberFull][index];
+            }
+            return null;
+        }
+
+        /**
+         * Finds a node based on its unique identifier.
+         * @param {string} uniqueId - The unique identifier (partNumberFull_nodeId).
+         * @returns {THREE.Object3D|null} - The corresponding node or null.
+         */
+        function findNodeByUniqueId(uniqueId) {
+            const [partNumberFull, nodeId] = uniqueId.split('_');
+            const node = nodes[partNumberFull]?.find(n => n.id == nodeId);
+            return node || null;
+        }
+
+        /**
+         * Retrieves the table row element by unique identifier.
+         * @param {string} uniqueId - The unique identifier (partNumberFull_nodeId).
+         * @returns {HTMLElement|null} - The table row element or null.
+         */
+        function getRowByUniqueId(uniqueId) {
+            return document.querySelector(`tr[data-unique-id='${uniqueId}']`);
+        }
+
+        /**
+         * Retrieves the part name by full part number.
+         * @param {string} partNumberFull - The full part number.
+         * @returns {string} - The part name.
+         */
+        function getPartNameByPartNumber(partNumberFull) {
+            const nodesArray = nodes[partNumberFull];
+            if (nodesArray && nodesArray.length > 0) {
+                return nodesArray.map(node => {
+                    const inventorData = node.userData?.properties?.Inventor;
+                    const nameEnUs = inventorData?.["NAME_EN_US"]?.value || "";
+                    const ptcName = inventorData?.["PTC_WM_NAME"]?.value || "";
+                    const nodeName = node.name || 'Unnamed Node';
+                    return nameEnUs || ptcName || nodeName;
+                }).join(', ');
+            }
+            return '';
+        }
+
+        /**
+         * Resizes the renderer and updates the camera's aspect ratio.
+         */
+        function updateRendererSize() {
+            const totalSidebarWidth = getTotalSidebarWidth();
+            renderer.setSize(window.innerWidth - totalSidebarWidth, window.innerHeight);
+            const aspect = (window.innerWidth - totalSidebarWidth) / window.innerHeight;
+            if (camera) {
+                camera.left = -cameraSize * aspect / 2;
+                camera.right = cameraSize * aspect / 2;
+                camera.top = cameraSize / 2;
+                camera.bottom = -cameraSize / 2;
+                camera.updateProjectionMatrix();
+            }
+            if (controls) controls.update();
+        }
+
+        /**
+         * Handles window resize events to adjust renderer and camera.
+         */
+        function onWindowResize() {
+            updateRendererSize();
+        }
+
+        /**
+         * Calculates the total width occupied by all visible sidebars.
+         * @returns {number} - The total sidebar width in pixels.
+         */
+        function getTotalSidebarWidth() {
+            const sidebarWidth = document.getElementById('sidebar').offsetWidth;
+            const setupSidebarWidth = isSetupMode ? document.getElementById('setupSidebar').offsetWidth : 0;
+            return sidebarWidth + setupSidebarWidth;
+        }
+
+        /**
+         * Initializes the resizer for the main sidebar.
+         */
+        function initSidebarResizer() {
+            const sidebar = document.getElementById('sidebar');
+            const resizer = document.getElementById('sidebar-resizer');
+            const minWidth = 200;
+            const maxWidth = window.innerWidth * 0.7;
+            let startX, startWidth;
+
+            resizer.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                startX = e.clientX;
+                startWidth = parseInt(document.defaultView.getComputedStyle(sidebar).width, 10);
+                document.documentElement.addEventListener('mousemove', doDrag, false);
+                document.documentElement.addEventListener('mouseup', stopDrag, false);
+            });
+
+            /**
+             * Handles the drag event to resize the sidebar.
+             * @param {MouseEvent} e - The mousemove event.
+             */
+            function doDrag(e) {
+                const newWidth = startWidth + e.clientX - startX;
+                if (newWidth > minWidth && newWidth < maxWidth) {
+                    sidebar.style.width = newWidth + 'px';
+                    updateRendererSize();
+                }
+            }
+
+            /**
+             * Stops the drag event listeners.
+             */
+            function stopDrag() {
+                document.documentElement.removeEventListener('mousemove', doDrag, false);
+                document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            }
+        }
+
+        /**
+         * Initializes the resizer for the setup sidebar.
+         */
+        function initSetupSidebarResizer() {
+            const setupSidebar = document.getElementById('setupSidebar');
+            const resizer = document.getElementById('setupSidebar-resizer');
+            const minWidth = 200;
+            const maxWidth = window.innerWidth * 0.7;
+            let startX, startWidth;
+
+            resizer.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                startX = e.clientX;
+                startWidth = parseInt(document.defaultView.getComputedStyle(setupSidebar).width, 10);
+                document.documentElement.addEventListener('mousemove', doDrag, false);
+                document.documentElement.addEventListener('mouseup', stopDrag, false);
+            });
+
+            /**
+             * Handles the drag event to resize the setup sidebar.
+             * @param {MouseEvent} e - The mousemove event.
+             */
+            function doDrag(e) {
+                const newWidth = startWidth - (e.clientX - startX);
+                if (newWidth > minWidth && newWidth < maxWidth) {
+                    setupSidebar.style.width = newWidth + 'px';
+                    updateRendererSize();
+                }
+            }
+
+            /**
+             * Stops the drag event listeners.
+             */
+            function stopDrag() {
+                document.documentElement.removeEventListener('mousemove', doDrag, false);
+                document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            }
+        }
+
+        /* =========================================
+         * ANIMATION LOOP
+         * ========================================= */
+        /**
+         * The main animation loop.
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+            if (camera) {
+                renderer.render(scene, camera);
+            }
+            updateMappedPartsDotsPositions();
+            updateFlyoutPositions(); // Continuously update flyout lines/panels
+        }
+
+        /* =========================================
+         * MAPPING FUNCTIONS
+         * ========================================= */
+        /**
+         * Highlights all parts that have mappings.
+         */
+        function highlightMappedParts() {
+            if (!model) return;
+            model.traverse(node => {
+                const inventorData = node.userData?.properties?.Inventor;
+                if (!inventorData) return;
+                const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+                if (sensorMapping[partNumberFull]) {
+                    if (node.isMesh) {
+                        node.material = node.originalMaterial.clone();
+                        node.material.emissive.setHex(0x00ff00);
+                    }
+                } else {
+                    if (node.isMesh && node.originalMaterial) {
+                        node.material = node.originalMaterial.clone();
+                        node.material.emissive.setHex(0x000000);
+                    }
+                }
+            });
+
+            // Updates the list of mapped parts for blue dots
+            mappedParts = [];
+            model.traverse(node => {
+                const inventorData = node.userData?.properties?.Inventor;
+                if (inventorData) {
+                    const partNumberFull = inventorData?.["Part Number"]?.value || "N/A";
+                    if (sensorMapping[partNumberFull]) {
+                        mappedParts.push(node);
+                    }
+                }
+            });
+        }
+
+        /* =========================================
+         * EXPAND TO NODE IN STRUCTURE FUNCTION
+         * ========================================= */
+        /**
+         * Expands the node structure table to reveal the row corresponding to the given uniqueId.
+         * @param {string} uniqueId - The unique identifier of the node.
+         */
+        function expandToNodeInStructure(uniqueId) {
+            const row = getRowByUniqueId(uniqueId);
+            if (!row) return;
+
+            // Traverse up to expand all parent rows
+            let currentRow = row;
+            while (currentRow.dataset.parentUniqueId) {
+                const parentUniqueId = currentRow.dataset.parentUniqueId;
+                const parentRow = getRowByUniqueId(parentUniqueId);
+                if (parentRow && parentRow.classList.contains('collapsed')) {
+                    parentRow.classList.remove('collapsed');
+                    parentRow.classList.add('expanded');
+                    expandChildren(parentUniqueId);
+                }
+                currentRow = parentRow;
+            }
+
+            // Scroll the selected row into view
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    </script>
+</body>
+</html>
